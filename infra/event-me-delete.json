@@ -1,0 +1,16 @@
+{
+  "httpMethod": "DELETE",
+  "rawPath": "/me/preferences/language",
+  "pathParameters": {
+    "preferenceKey": "language"
+  },
+  "requestContext": {
+    "authorizer": {
+      "jwt": {
+        "claims": {
+          "sub": "test-user-123"
+        }
+      }
+    }
+  }
+}

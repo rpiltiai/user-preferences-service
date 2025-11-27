@@ -1,0 +1,14 @@
+{
+  "httpMethod": "PUT",
+  "rawPath": "/me/preferences",
+  "requestContext": {
+    "authorizer": {
+      "jwt": {
+        "claims": {
+          "sub": "test-user-123"
+        }
+      }
+    }
+  },
+  "body": "{\"preferenceKey\": \"language\", \"value\": \"fr\"}"
+}

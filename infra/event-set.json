@@ -1,0 +1,8 @@
+{
+  "httpMethod": "PUT",
+  "resource": "/preferences/{userId}",
+  "pathParameters": {
+    "userId": "test-user-123"
+  },
+  "body": "{\"preferenceKey\": \"language\", \"value\": \"en\"}"
+}

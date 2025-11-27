@@ -1,0 +1,13 @@
+{
+  "rawPath": "/me/preferences",
+  "requestContext": {
+    "authorizer": {
+      "jwt": {
+        "claims": {
+          "sub": "test-user-123",
+          "custom:account_type": "ADULT"
+        }
+      }
+    }
+  }
+}
