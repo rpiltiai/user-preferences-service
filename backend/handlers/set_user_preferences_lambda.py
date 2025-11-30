@@ -8,6 +8,8 @@ from boto3.dynamodb.conditions import Key
 dynamodb = boto3.resource("dynamodb")
 preferences_table = dynamodb.Table(os.environ["PREFERENCES_TABLE"])
 versions_table = dynamodb.Table(os.environ["PREFERENCE_VERSIONS_TABLE"])
+child_links_table = dynamodb.Table(os.environ["CHILD_LINKS_TABLE"])
+users_table = dynamodb.Table(os.environ["USERS_TABLE"])
 
 
 def _now_iso():
@@ -56,6 +58,51 @@ def _claims_user_id(event):
     return None
 
 
+def _get_user(user_id):
+    if not user_id:
+        return None
+    resp = users_table.get_item(Key={"userId": user_id})
+    return resp.get("Item")
+
+
+def _ensure_actor_can_manage_child(actor_id, child_id):
+    actor = _get_user(actor_id)
+    if not actor:
+        raise PermissionError("Actor user record not found")
+    role = (actor.get("role") or "").lower()
+    if role not in ("adult", "admin"):
+        raise PermissionError("Only Adult/Admin can manage children")
+    if role == "admin":
+        return actor
+    link_resp = child_links_table.get_item(
+        Key={"adultId": actor_id, "childId": child_id}
+    )
+    if "Item" not in link_resp:
+        raise PermissionError("Child is not linked to this adult")
+    return actor
+
+
+def _resolve_target_user(event):
+    path_params = event.get("pathParameters") or {}
+    child_id = path_params.get("childId")
+    path_user_id = path_params.get("userId")
+    caller_user_id = _claims_user_id(event)
+
+    if child_id:
+        if not caller_user_id:
+            raise PermissionError("Authentication (Cognito) is required for child access")
+        _ensure_actor_can_manage_child(caller_user_id, child_id)
+        return child_id
+
+    if path_user_id:
+        return path_user_id
+
+    if caller_user_id:
+        return caller_user_id
+
+    raise ValueError("userId is required")
+
+
 def handler(event, context):
     """
     SET /preferences/{userId}
@@ -87,23 +134,20 @@ def handler(event, context):
     print("Incoming event:", json.dumps(event))
 
     try:
-        # 1. Determine userId
-        user_id = None
-
-        # Variant 1: REST API with pathParameters (/preferences/{userId})
-        path_params = event.get("pathParameters") or {}
-        if "userId" in path_params:
-            user_id = path_params["userId"]
-
-        # Variant 2: Cognito authorizer (/me/preferences)
-        if not user_id:
-            user_id = _claims_user_id(event)
-
-        if not user_id:
+        # 1. Determine target user (self, explicit userId, or child)
+        try:
+            user_id = _resolve_target_user(event)
+        except PermissionError as auth_err:
+            return {
+                "statusCode": 403,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({"error": str(auth_err)}),
+            }
+        except ValueError as ve:
             return {
                 "statusCode": 400,
                 "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": "userId is required"}),
+                "body": json.dumps({"error": str(ve)}),
             }
 
         # 2. Parse body

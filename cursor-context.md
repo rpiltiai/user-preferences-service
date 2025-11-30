@@ -170,17 +170,18 @@ Still missing:
 - Окремий публічний `/default-preferences` ендпоінт
 - Використання дефолтів у `/preferences/{userId}` або GraphQL
 
-4.3 Preference Versioning (partially implemented)
+4.3 Preference Versioning (live for CRUD + revert)
 
 Current state:
 
-- PUT/DELETE operations now record immutable entries in `PreferenceVersions` (action, timestamp, old/new value) via the updated Lambdas.
+- PUT/DELETE operations record immutable entries in `PreferenceVersions` (action, timestamp, old/new value).
+- `GET /preference-versions*` endpoints allow ops to query history per user and per preference key (with pagination tokens).
+- `POST /preferences/revert` applies a historical version (sets or deletes the preference) and logs a new REVERT entry.
 
 Still missing:
 
-- EventBridge publishing
-- History/revert API surface
-- Queries optimized via GSIs
+- EventBridge publishing / downstream audit worker
+- GSIs / filtered queries for large tenants
 
 4.4 Revert Operation (not implemented)
 
@@ -193,7 +194,7 @@ Rewrite current value
 
 Create new version entry (revert is also a change)
 
-4.5 Child–Parent Restrictions (not enforced)
+4.5 Child–Parent Restrictions (partially enforced)
 
 Child cannot override:
 
@@ -207,6 +208,12 @@ Parent can write to both:
 
 /children/{childId}/preferences
 
+Current implementation:
+
+- Cognito-protected `/children/*` routes verify that the caller is Adult/Admin and that `childId` is linked in `ChildLinks`.
+- Adults can GET/PUT child preferences (with the same default resolver applied on read).
+- Remaining work: enforce per-preference locks (childOverride = locked) and age-restriction logic during PUT/REVERT, plus granular role scopes for Admins.
+
 5. REST API Surface
 
 5.1 Deployed via API Gateway today
@@ -216,23 +223,23 @@ Parent can write to both:
 - GET /preferences/{userId}
 - PUT /preferences/{userId}
 - DELETE /preferences/{userId}/{preferenceKey}
-- GET /me/preferences (працює тільки якщо Cognito authorizer додає JWT claims)
-- PUT /me/preferences (поки що повертає 400 без JWT)
-- DELETE /me/preferences/{preferenceKey} (потребує JWT)
-
-5.2 Lambda-ready but still blocked
-
-- `/me/*` маршрути розгорнуті, але поки що немає Cognito User Pool + authorizer, тому Lambda не отримує `requestContext.authorizer.jwt.claims`.
-
-5.3 Missing (must be implemented next)
-
-- GET /children
-- GET /children/{childId}/preferences
-- PUT /children/{childId}/preferences
-- GET /default-preferences
-- GET /preference-versions
+- GET /me/preferences (Cognito JWT required, returns resolved defaults + overrides)
+- PUT /me/preferences (Cognito JWT required)
+- DELETE /me/preferences/{preferenceKey} (Cognito JWT required)
+- GET /children (Cognito Adult/Admin, lists linked child profiles)
+- GET /children/{childId}/preferences (Adult/Admin, child must be linked; returns resolved prefs)
+- PUT /children/{childId}/preferences (Adult/Admin, writes overrides for the child)
+- GET /preference-versions (requires query param `userId`)
+- GET /preference-versions/{userId}
 - GET /preference-versions/{userId}/{preferenceKey}
 - POST /preferences/revert
+
+5.2 Missing (must be implemented next)
+
+- GET /default-preferences (read-only endpoint using resolver)
+- Child preference DELETE / PATCH operations (parity with adults)
+- Role-based access policies (e.g., Admin vs Adult vs Child) for versioning and revert endpoints
+- Public/global `GET /preference-versions` filtering (if needed for analytics)
 
 6. Target GraphQL API (Appendix B)
 
@@ -369,6 +376,9 @@ Manual CDK deploy from CloudShell.
 - `get_user_lambda.py` (розгорнутий на `/users/{userId}`).
 - `set_user_preferences_lambda.py` (розгорнутий за `/preferences/{userId}` PUT і `/me/preferences` PUT, тепер зберігає `updatedAt` і записує версії змін).
 - `delete_user_preference_lambda.py` (розгорнутий за `/preferences/{userId}/{preferenceKey}` DELETE та `/me/preferences/{preferenceKey}` DELETE, також пише версії з дією DELETE).
+- `list_preference_versions_lambda.py` (адміністративні GET `/preference-versions*`).
+- `revert_preference_lambda.py` (POST `/preferences/revert`, створює REVERT-версію і оновлює Preferences).
+- `list_children_lambda.py` (GET `/children`, повертає зв’язаних дітей для дорослого користувача).
 
 ✔ REST API Gateway
 
@@ -390,20 +400,13 @@ Manual CDK deploy from CloudShell.
 13. What Is Missing (Full Backlog)
 13.1 Critical Backend Work
 
-Attach Cognito authorizer / JWT propagation so `/me/*` маршрути працюють згідно ролей Adult/Child.
-Implement Child/Adult roles verification (requires Cognito)
-
-Implement /children/* endpoints
-
-Expose PreferenceVersions data via REST (list/filter endpoints) and design revert workflow using stored history
-
-Implement revert logic
+Implement Child/Adult roles verification (requires Cognito claims enrichment + role-based checks) — currently only `/children/*` enforce Adult/Admin; need broader policy for revert/import/etc.
 
 Attach DynamoDB Streams → EventBridge → AuditWorker Lambda
 
 Expose `/default-preferences` endpoint (read-only) реюзуючи існуючий резольвер
 
-Implement missing GET/PUT endpoints for versioning
+Tighten PreferenceVersions APIs with GSIs / filtering / auth once multi-tenant requirements are clear
 
 13.2 GraphQL (AppSync)
 

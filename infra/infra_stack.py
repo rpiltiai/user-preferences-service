@@ -157,6 +157,7 @@ class InfraStack(Stack):
                 "USERS_TABLE": self.users_table.table_name,
                 "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
                 "AGE_THRESHOLDS_TABLE": self.age_thresholds_table.table_name,
+                "CHILD_LINKS_TABLE": self.child_links_table.table_name,
             },
         )
 
@@ -171,6 +172,8 @@ class InfraStack(Stack):
             environment={
                 "PREFERENCES_TABLE": self.preferences_table.table_name,
                 "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
+                "CHILD_LINKS_TABLE": self.child_links_table.table_name,
+                "USERS_TABLE": self.users_table.table_name,
             },
         )
 
@@ -188,16 +191,64 @@ class InfraStack(Stack):
             },
         )
 
+        # -------- Lambda: GET /preference-versions* --------
+
+        list_preference_versions_lambda = _lambda.Function(
+            self,
+            "ListPreferenceVersionsFunction",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="handlers.list_preference_versions_lambda.handler",
+            code=_lambda.Code.from_asset("../backend"),
+            environment={
+                "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
+            },
+        )
+
+        # -------- Lambda: POST /preferences/revert --------
+        # -------- Lambda: GET /children --------
+
+        list_children_lambda = _lambda.Function(
+            self,
+            "ListChildrenFunction",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="handlers.list_children_lambda.handler",
+            code=_lambda.Code.from_asset("../backend"),
+            environment={
+                "CHILD_LINKS_TABLE": self.child_links_table.table_name,
+                "USERS_TABLE": self.users_table.table_name,
+            },
+        )
+
+        revert_preference_lambda = _lambda.Function(
+            self,
+            "RevertPreferenceFunction",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="handlers.revert_preference_lambda.handler",
+            code=_lambda.Code.from_asset("../backend"),
+            environment={
+                "PREFERENCES_TABLE": self.preferences_table.table_name,
+                "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
+            },
+        )
+
         # Grant read
         self.users_table.grant_read_data(get_user_lambda)
         self.users_table.grant_read_data(get_user_preferences_lambda)
+        self.users_table.grant_read_data(set_user_preferences_lambda)
         self.preferences_table.grant_read_data(get_user_preferences_lambda)
         self.preferences_table.grant_read_write_data(set_user_preferences_lambda)
         self.preferences_table.grant_read_write_data(delete_user_preference_lambda)
         self.managed_prefs_table.grant_read_data(get_user_preferences_lambda)
         self.age_thresholds_table.grant_read_data(get_user_preferences_lambda)
+        self.child_links_table.grant_read_data(get_user_preferences_lambda)
+        self.child_links_table.grant_read_data(set_user_preferences_lambda)
+        self.child_links_table.grant_read_data(list_children_lambda)
+        self.users_table.grant_read_data(list_children_lambda)
         self.preference_versions_table.grant_write_data(set_user_preferences_lambda)
         self.preference_versions_table.grant_write_data(delete_user_preference_lambda)
+        self.preference_versions_table.grant_read_data(list_preference_versions_lambda)
+        self.preference_versions_table.grant_read_write_data(revert_preference_lambda)
+        self.preferences_table.grant_read_write_data(revert_preference_lambda)
 
         # -------- API Gateway --------
 
@@ -251,6 +302,13 @@ class InfraStack(Stack):
             apigw.LambdaIntegration(delete_user_preference_lambda),
         )
 
+        # /preferences/revert
+        preferences_revert = preferences_root.add_resource("revert")
+        preferences_revert.add_method(
+            "POST",
+            apigw.LambdaIntegration(revert_preference_lambda),
+        )
+
         # /me/preferences (JWT-protected path, Lambda expects Cognito claims)
         me_resource = api.root.add_resource(
             "me",
@@ -273,5 +331,48 @@ class InfraStack(Stack):
         me_preference_key.add_method(
             "DELETE",
             apigw.LambdaIntegration(delete_user_preference_lambda),
+        )
+
+        # /children (Adult/Admin only via Cognito)
+        children_resource = api.root.add_resource(
+            "children",
+            default_method_options=apigw.MethodOptions(
+                authorization_type=apigw.AuthorizationType.COGNITO,
+                authorizer=me_authorizer,
+            ),
+        )
+        children_resource.add_method(
+            "GET",
+            apigw.LambdaIntegration(list_children_lambda),
+        )
+
+        child_by_id = children_resource.add_resource("{childId}")
+        child_preferences = child_by_id.add_resource("preferences")
+        child_preferences.add_method(
+            "GET",
+            apigw.LambdaIntegration(get_user_preferences_lambda),
+        )
+        child_preferences.add_method(
+            "PUT",
+            apigw.LambdaIntegration(set_user_preferences_lambda),
+        )
+
+        # /preference-versions
+        preference_versions_root = api.root.add_resource("preference-versions")
+        preference_versions_root.add_method(
+            "GET",
+            apigw.LambdaIntegration(list_preference_versions_lambda),
+        )
+
+        preference_versions_by_user = preference_versions_root.add_resource("{userId}")
+        preference_versions_by_user.add_method(
+            "GET",
+            apigw.LambdaIntegration(list_preference_versions_lambda),
+        )
+
+        preference_versions_by_key = preference_versions_by_user.add_resource("{preferenceKey}")
+        preference_versions_by_key.add_method(
+            "GET",
+            apigw.LambdaIntegration(list_preference_versions_lambda),
         )
 

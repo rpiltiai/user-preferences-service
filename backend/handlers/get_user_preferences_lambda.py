@@ -11,6 +11,7 @@ preferences_table = dynamodb.Table(os.environ["PREFERENCES_TABLE"])
 users_table = dynamodb.Table(os.environ["USERS_TABLE"])
 managed_prefs_table = dynamodb.Table(os.environ["MANAGED_PREFERENCES_TABLE"])
 age_thresholds_table = dynamodb.Table(os.environ["AGE_THRESHOLDS_TABLE"])
+child_links_table = dynamodb.Table(os.environ["CHILD_LINKS_TABLE"])
 
 
 def _claims_user_id(event):
@@ -37,6 +38,54 @@ def _extract_user_id(event):
         return path_params["userId"]
 
     return _claims_user_id(event)
+
+
+def _get_user(user_id):
+    if not user_id:
+        return None
+    resp = users_table.get_item(Key={"userId": user_id})
+    return resp.get("Item")
+
+
+def _ensure_actor_can_manage_child(actor_id, child_id):
+    actor = _get_user(actor_id)
+    if not actor:
+        raise PermissionError("Actor user record not found")
+
+    role = (actor.get("role") or "").lower()
+    if role not in ("adult", "admin"):
+        raise PermissionError("Only Adult/Admin can manage children")
+
+    if role == "admin":
+        return actor
+
+    link_resp = child_links_table.get_item(
+        Key={"adultId": actor_id, "childId": child_id}
+    )
+    if "Item" not in link_resp:
+        raise PermissionError("Child is not linked to this adult")
+    return actor
+
+
+def _resolve_target_user(event):
+    path_params = event.get("pathParameters") or {}
+    child_id = path_params.get("childId")
+    path_user_id = path_params.get("userId")
+    caller_user_id = _claims_user_id(event)
+
+    if child_id:
+        if not caller_user_id:
+            raise PermissionError("Authentication (Cognito) is required for child access")
+        _ensure_actor_can_manage_child(caller_user_id, child_id)
+        return child_id, True
+
+    if path_user_id:
+        return path_user_id, False
+
+    if caller_user_id:
+        return caller_user_id, True
+
+    raise ValueError("userId is missing (neither path nor JWT)")
 
 
 def _scan_all(table):
@@ -198,25 +247,29 @@ def _merge_preferences(user_items, defaults, include_defaults):
 def handler(event, context):
     print("Incoming event:", json.dumps(event))
 
-    user_id = _extract_user_id(event)
-    if not user_id:
+    try:
+        target_user_id, include_defaults = _resolve_target_user(event)
+    except PermissionError as auth_err:
+        return {
+            "statusCode": 403,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({"error": str(auth_err)}),
+        }
+    except ValueError as ve:
         return {
             "statusCode": 400,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "userId is missing (neither path nor JWT)"}),
+            "body": json.dumps({"error": str(ve)}),
         }
 
     try:
         response = preferences_table.query(
-            KeyConditionExpression=Key("userId").eq(user_id)
+            KeyConditionExpression=Key("userId").eq(target_user_id)
         )
         items = response.get("Items", [])
 
-        path_params = event.get("pathParameters") or {}
-        include_defaults = not path_params.get("userId")
-
         if include_defaults:
-            user_ctx = _build_user_context(user_id)
+            user_ctx = _build_user_context(target_user_id)
             defaults = _resolve_managed_defaults(user_ctx)
             items = _merge_preferences(items, defaults, include_defaults=True)
         else:
