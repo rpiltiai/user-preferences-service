@@ -136,9 +136,41 @@ class InfraStack(Stack):
             },
         )
 
+        # -------- Lambda: PUT /preferences/{userId}, /me/preferences --------
+
+        set_user_preferences_lambda = _lambda.Function(
+            self,
+            "SetUserPreferencesFunction",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="handlers.set_user_preferences_lambda.handler",
+            code=_lambda.Code.from_asset("../backend"),
+            environment={
+                "PREFERENCES_TABLE": self.preferences_table.table_name,
+                "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
+            },
+        )
+
+        # -------- Lambda: DELETE /preferences/{userId}/{preferenceKey}, /me/preferences/{preferenceKey} --------
+
+        delete_user_preference_lambda = _lambda.Function(
+            self,
+            "DeleteUserPreferenceFunction",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="handlers.delete_user_preference_lambda.handler",
+            code=_lambda.Code.from_asset("../backend"),
+            environment={
+                "PREFERENCES_TABLE": self.preferences_table.table_name,
+                "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
+            },
+        )
+
         # Grant read
         self.users_table.grant_read_data(get_user_lambda)
         self.preferences_table.grant_read_data(get_user_preferences_lambda)
+        self.preferences_table.grant_read_write_data(set_user_preferences_lambda)
+        self.preferences_table.grant_read_write_data(delete_user_preference_lambda)
+        self.preference_versions_table.grant_write_data(set_user_preferences_lambda)
+        self.preference_versions_table.grant_write_data(delete_user_preference_lambda)
 
         # -------- API Gateway --------
 
@@ -159,9 +191,46 @@ class InfraStack(Stack):
         )
 
         # /users/{userId}/preferences
-        preferences_resource = user_by_id.add_resource("preferences")
-        preferences_resource.add_method(
+        user_preferences_resource = user_by_id.add_resource("preferences")
+        user_preferences_resource.add_method(
             "GET",
             apigw.LambdaIntegration(get_user_preferences_lambda),
+        )
+
+        # /preferences/{userId} (public API used by tests & game clients)
+        preferences_root = api.root.add_resource("preferences")
+        preferences_by_user = preferences_root.add_resource("{userId}")
+        preferences_by_user.add_method(
+            "GET",
+            apigw.LambdaIntegration(get_user_preferences_lambda),
+        )
+        preferences_by_user.add_method(
+            "PUT",
+            apigw.LambdaIntegration(set_user_preferences_lambda),
+        )
+
+        # /preferences/{userId}/{preferenceKey}
+        preference_item = preferences_by_user.add_resource("{preferenceKey}")
+        preference_item.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(delete_user_preference_lambda),
+        )
+
+        # /me/preferences (JWT-protected path, Lambda expects Cognito claims)
+        me_resource = api.root.add_resource("me")
+        me_preferences = me_resource.add_resource("preferences")
+        me_preferences.add_method(
+            "GET",
+            apigw.LambdaIntegration(get_user_preferences_lambda),
+        )
+        me_preferences.add_method(
+            "PUT",
+            apigw.LambdaIntegration(set_user_preferences_lambda),
+        )
+
+        me_preference_key = me_preferences.add_resource("{preferenceKey}")
+        me_preference_key.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(delete_user_preference_lambda),
         )
 

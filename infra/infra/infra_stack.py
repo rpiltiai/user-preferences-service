@@ -143,6 +143,7 @@ class InfraStack(Stack):
             code=_lambda.Code.from_asset("../backend"),
             environment={
                 "PREFERENCES_TABLE": self.preferences_table.table_name,
+                "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
             },
         )
 
@@ -164,13 +165,14 @@ class InfraStack(Stack):
 
         self.preferences_table.grant_read_data(get_user_preferences_lambda)
         self.preferences_table.grant_read_write_data(set_user_preferences_lambda)
-        self.preferences_table.grant_read_data(delete_user_preference_lambda)
+        self.preferences_table.grant_read_write_data(delete_user_preference_lambda)
 
         # get_user читає з таблиці Users
         self.users_table.grant_read_data(get_user_lambda)
 
         # версіонування: set_user_preferences може писати в таблицю версій
         self.preference_versions_table.grant_write_data(set_user_preferences_lambda)
+        self.preference_versions_table.grant_write_data(delete_user_preference_lambda)
 
         #
         # 4. API Gateway

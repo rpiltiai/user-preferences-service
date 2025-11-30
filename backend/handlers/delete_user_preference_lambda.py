@@ -1,11 +1,33 @@
 import json
 import os
-import boto3
+from datetime import datetime
 
+import boto3
 from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(os.environ["PREFERENCES_TABLE"])
+preferences_table = dynamodb.Table(os.environ["PREFERENCES_TABLE"])
+versions_table = dynamodb.Table(os.environ["PREFERENCE_VERSIONS_TABLE"])
+
+
+def _put_version_entry(user_id, pref_key, old_value, action):
+    timestamp = datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
+    item = {
+        "userId": user_id,
+        "preferenceKey_ts": f"{pref_key}#{timestamp}",
+        "preferenceKey": pref_key,
+        "timestamp": timestamp,
+        "action": action,
+    }
+
+    if old_value not in (None, ""):
+        item["oldValue"] = old_value
+
+    print(
+        f"[PreferenceVersions] action={action} userId={user_id} key={pref_key} "
+        f"old={old_value}"
+    )
+    versions_table.put_item(Item=item)
 
 
 def _extract_user_id(event):
@@ -58,15 +80,30 @@ def handler(event, context):
 
     try:
         # Видаляємо один конкретний preference
-        table.delete_item(
+        existing_item = preferences_table.get_item(
+            Key={
+                "userId": user_id,
+                "preferenceKey": pref_key,
+            }
+        ).get("Item")
+
+        preferences_table.delete_item(
             Key={
                 "userId": user_id,
                 "preferenceKey": pref_key,
             }
         )
 
+        old_value = existing_item.get("value") if existing_item else None
+        _put_version_entry(
+            user_id=user_id,
+            pref_key=pref_key,
+            old_value=old_value,
+            action="DELETE",
+        )
+
         # Читаємо актуальний список prefs користувача після видалення
-        response = table.query(
+        response = preferences_table.query(
             KeyConditionExpression=Key("userId").eq(user_id)
         )
         items = response.get("Items", [])

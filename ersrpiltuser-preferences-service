@@ -1,0 +1,95 @@
+[1mdiff --git a/infra/infra_stack.py b/infra/infra_stack.py[m
+[1mindex 9f6698f..6f7f0a3 100644[m
+[1m--- a/infra/infra_stack.py[m
+[1m+++ b/infra/infra_stack.py[m
+[36m@@ -136,9 +136,41 @@[m [mclass InfraStack(Stack):[m
+             },[m
+         )[m
+ [m
+[32m+[m[32m        # -------- Lambda: PUT /preferences/{userId}, /me/preferences --------[m
+[32m+[m
+[32m+[m[32m        set_user_preferences_lambda = _lambda.Function([m
+[32m+[m[32m            self,[m
+[32m+[m[32m            "SetUserPreferencesFunction",[m
+[32m+[m[32m            runtime=_lambda.Runtime.PYTHON_3_11,[m
+[32m+[m[32m            handler="handlers.set_user_preferences_lambda.handler",[m
+[32m+[m[32m            code=_lambda.Code.from_asset("../backend"),[m
+[32m+[m[32m            environment={[m
+[32m+[m[32m                "PREFERENCES_TABLE": self.preferences_table.table_name,[m
+[32m+[m[32m                "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,[m
+[32m+[m[32m            },[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        # -------- Lambda: DELETE /preferences/{userId}/{preferenceKey}, /me/preferences/{preferenceKey} --------[m
+[32m+[m
+[32m+[m[32m        delete_user_preference_lambda = _lambda.Function([m
+[32m+[m[32m            self,[m
+[32m+[m[32m            "DeleteUserPreferenceFunction",[m
+[32m+[m[32m            runtime=_lambda.Runtime.PYTHON_3_11,[m
+[32m+[m[32m            handler="handlers.delete_user_preference_lambda.handler",[m
+[32m+[m[32m            code=_lambda.Code.from_asset("../backend"),[m
+[32m+[m[32m            environment={[m
+[32m+[m[32m                "PREFERENCES_TABLE": self.preferences_table.table_name,[m
+[32m+[m[32m                "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,[m
+[32m+[m[32m            },[m
+[32m+[m[32m        )[m
+[32m+[m
+         # Grant read[m
+         self.users_table.grant_read_data(get_user_lambda)[m
+         self.preferences_table.grant_read_data(get_user_preferences_lambda)[m
+[32m+[m[32m        self.preferences_table.grant_read_write_data(set_user_preferences_lambda)[m
+[32m+[m[32m        self.preferences_table.grant_read_write_data(delete_user_preference_lambda)[m
+[32m+[m[32m        self.preference_versions_table.grant_write_data(set_user_preferences_lambda)[m
+[32m+[m[32m        self.preference_versions_table.grant_write_data(delete_user_preference_lambda)[m
+ [m
+         # -------- API Gateway --------[m
+ [m
+[36m@@ -159,9 +191,46 @@[m [mclass InfraStack(Stack):[m
+         )[m
+ [m
+         # /users/{userId}/preferences[m
+[31m-        preferences_resource = user_by_id.add_resource("preferences")[m
+[31m-        preferences_resource.add_method([m
+[32m+[m[32m        user_preferences_resource = user_by_id.add_resource("preferences")[m
+[32m+[m[32m        user_preferences_resource.add_method([m
+[32m+[m[32m            "GET",[m
+[32m+[m[32m            apigw.LambdaIntegration(get_user_preferences_lambda),[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        # /preferences/{userId} (public API used by tests & game clients)[m
+[32m+[m[32m        preferences_root = api.root.add_resource("preferences")[m
+[32m+[m[32m        preferences_by_user = preferences_root.add_resource("{userId}")[m
+[32m+[m[32m        preferences_by_user.add_method([m
+[32m+[m[32m            "GET",[m
+[32m+[m[32m            apigw.LambdaIntegration(get_user_preferences_lambda),[m
+[32m+[m[32m        )[m
+[32m+[m[32m        preferences_by_user.add_method([m
+[32m+[m[32m            "PUT",[m
+[32m+[m[32m            apigw.LambdaIntegration(set_user_preferences_lambda),[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        # /preferences/{userId}/{preferenceKey}[m
+[32m+[m[32m        preference_item = preferences_by_user.add_resource("{preferenceKey}")[m
+[32m+[m[32m        preference_item.add_method([m
+[32m+[m[32m            "DELETE",[m
+[32m+[m[32m            apigw.LambdaIntegration(delete_user_preference_lambda),[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        # /me/preferences (JWT-protected path, Lambda expects Cognito claims)[m
+[32m+[m[32m        me_resource = api.root.add_resource("me")[m
+[32m+[m[32m        me_preferences = me_resource.add_resource("preferences")[m
+[32m+[m[32m        me_preferences.add_method([m
+             "GET",[m
+             apigw.LambdaIntegration(get_user_preferences_lambda),[m
+         )[m
+[32m+[m[32m        me_preferences.add_method([m
+[32m+[m[32m            "PUT",[m
+[32m+[m[32m            apigw.LambdaIntegration(set_user_preferences_lambda),[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        me_preference_key = me_preferences.add_resource("{preferenceKey}")[m
+[32m+[m[32m        me_preference_key.add_method([m
+[32m+[m[32m            "DELETE",[m
+[32m+[m[32m            apigw.LambdaIntegration(delete_user_preference_lambda),[m
+[32m+[m[32m        )[m
+ [m
