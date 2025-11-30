@@ -42,6 +42,74 @@ class InfraStack(Stack):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
         )
 
+
+
+
+
+	    # ManagedPreferenceSchema table – схема керованих вподобань
+    self.managed_prefs_table = dynamodb.Table(
+        self,
+        "ManagedPreferenceSchemaTable",
+        table_name="ManagedPreferenceSchema",
+        partition_key=dynamodb.Attribute(
+            name="preferenceKey",
+            type=dynamodb.AttributeType.STRING,
+        ),
+        sort_key=dynamodb.Attribute(
+            name="scope",
+            type=dynamodb.AttributeType.STRING,
+        ),
+        billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+    )
+
+    # PreferenceVersions table – історія змін вподобань
+    self.preference_versions_table = dynamodb.Table(
+        self,
+        "PreferenceVersionsTable",
+        table_name="PreferenceVersions",
+        partition_key=dynamodb.Attribute(
+            name="userId",
+            type=dynamodb.AttributeType.STRING,
+        ),
+        sort_key=dynamodb.Attribute(
+            name="preferenceKey_ts",   # key#timestamp
+            type=dynamodb.AttributeType.STRING,
+        ),
+        billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+    )
+
+    # ChildLinks table – зв’язки дорослий ↔ дитина
+    self.child_links_table = dynamodb.Table(
+        self,
+        "ChildLinksTable",
+        table_name="ChildLinks",
+        partition_key=dynamodb.Attribute(
+            name="adultId",
+            type=dynamodb.AttributeType.STRING,
+        ),
+        sort_key=dynamodb.Attribute(
+            name="childId",
+            type=dynamodb.AttributeType.STRING,
+        ),
+        billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+    )
+
+    # AgeThresholds table – вікові пороги по регіонах
+    self.age_thresholds_table = dynamodb.Table(
+        self,
+        "AgeThresholdsTable",
+        table_name="AgeThresholds",
+        partition_key=dynamodb.Attribute(
+            name="regionCode",   # UA, EU, US
+            type=dynamodb.AttributeType.STRING,
+        ),
+        billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+    )
+
+
+
+
+
         # -------- Lambda: GET /users/{userId} --------
 
         get_user_lambda = _lambda.Function(
