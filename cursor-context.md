@@ -38,7 +38,7 @@ AI-based heuristic recommendations.
 
 - Репозиторій містить лише `backend/handlers` (Lambda-код), `infra/` (CDK стек, що посилається на `infra/infra_stack.py`) та `tests/`. Каталоги, згадані в README (`portal/`, `game1/`, `game2/`), ще не створені.
 - Поточний стек (`infra/infra_stack.py`) створює API Gateway з маршрутами `/users/{userId}`, `/users/{userId}/preferences`, `/preferences/{userId}` (GET/PUT) та `/preferences/{userId}/{preferenceKey}` (DELETE), Lambda-функції `get_user_lambda.py`, `get_user_preferences_lambda.py`, `set_user_preferences_lambda.py`, `delete_user_preference_lambda.py`, а також шість DynamoDB-таблиць (`Users`, `Preferences`, `ManagedPreferenceSchema`, `PreferenceVersions`, `ChildLinks`, `AgeThresholds`).
-- `/me/preferences` та `/me/preferences/{preferenceKey}` маршрути вже створені, але для їхньої роботи потрібен Cognito authorizer (інакше Lambda не отримає JWT claims).
+- `/me/preferences` та `/me/preferences/{preferenceKey}` маршрути захищені Cognito authorizer, Lambda витягує userId з JWT та застосовує default resolver перед тим, як повернути відповідь.
 - Cognito, AppSync, S3-портали, EventBridge та CI/CD не створені; авторизація обмежується читанням JWT claims, якщо вони вже передані в події.
 - У `tests/` є чотири інтеграційні тести (`test_public_preferences_api.py`, `test_me_lambdas.py`), які очікують, що користувач вручну передасть API base URL та назви Lambda-функцій через змінні середовища.
 
@@ -78,7 +78,7 @@ email	String	optional
 
 Stores current effective preferences.
 
-Status: таблиця активно використовується `get_user_preferences_lambda.py`, `set_user_preferences_lambda.py`, `delete_user_preference_lambda.py` (усі підключені до API Gateway; `/me/*` шляхи чекатимуть на Cognito).
+Status: таблиця активно використовується всіма preference-хендлерами; `/me/*` відповіді також проганяються через default resolver, який комбінує ManagedPreferenceSchema + AgeThresholds.
 
 Field	Type	Notes
 userId	PK	
@@ -158,27 +158,17 @@ Child – обмежені дії (не може змінювати деякі p
 
 Admin – read-only аналітика.
 
-4.2 Default Preferences Resolution Algorithm (not implemented)
+4.2 Default Preferences Resolution Algorithm (implemented for /me/preferences)
 
-When requested /default-preferences:
+Current behavior:
 
-load ManagedPreferenceSchema[preferenceKey]
+- `/me/preferences` GET викликає резольвер, який читає Users (role, country, birthDate), ManagedPreferenceSchema (всі дефолти) і AgeThresholds (визначає дитину).
+- Алгоритм: baseDefault → childOverride (якщо дитина) → countryOverrides → age restrictions. Результат комбінується з фактичними overrides з таблиці Preferences і повертається клієнту.
 
-start with baseDefault
+Still missing:
 
-if user.role == Child:
-
-apply childOverride
-
-if user.country exists in countryOverrides:
-
-apply that override
-
-if age < minAge:
-
-override forbidden preferences
-
-return resolved map
+- Окремий публічний `/default-preferences` ендпоінт
+- Використання дефолтів у `/preferences/{userId}` або GraphQL
 
 4.3 Preference Versioning (partially implemented)
 
@@ -401,8 +391,6 @@ Manual CDK deploy from CloudShell.
 13.1 Critical Backend Work
 
 Attach Cognito authorizer / JWT propagation so `/me/*` маршрути працюють згідно ролей Adult/Child.
-Implement default preferences resolution
-
 Implement Child/Adult roles verification (requires Cognito)
 
 Implement /children/* endpoints
@@ -413,7 +401,7 @@ Implement revert logic
 
 Attach DynamoDB Streams → EventBridge → AuditWorker Lambda
 
-Implement /default-preferences
+Expose `/default-preferences` endpoint (read-only) реюзуючи існуючий резольвер
 
 Implement missing GET/PUT endpoints for versioning
 

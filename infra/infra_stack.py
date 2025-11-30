@@ -154,6 +154,9 @@ class InfraStack(Stack):
             code=_lambda.Code.from_asset("../backend"),
             environment={
                 "PREFERENCES_TABLE": self.preferences_table.table_name,
+                "USERS_TABLE": self.users_table.table_name,
+                "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
+                "AGE_THRESHOLDS_TABLE": self.age_thresholds_table.table_name,
             },
         )
 
@@ -187,9 +190,12 @@ class InfraStack(Stack):
 
         # Grant read
         self.users_table.grant_read_data(get_user_lambda)
+        self.users_table.grant_read_data(get_user_preferences_lambda)
         self.preferences_table.grant_read_data(get_user_preferences_lambda)
         self.preferences_table.grant_read_write_data(set_user_preferences_lambda)
         self.preferences_table.grant_read_write_data(delete_user_preference_lambda)
+        self.managed_prefs_table.grant_read_data(get_user_preferences_lambda)
+        self.age_thresholds_table.grant_read_data(get_user_preferences_lambda)
         self.preference_versions_table.grant_write_data(set_user_preferences_lambda)
         self.preference_versions_table.grant_write_data(delete_user_preference_lambda)
 
