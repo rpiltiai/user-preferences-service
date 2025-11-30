@@ -30,27 +30,28 @@ def _put_version_entry(user_id, pref_key, old_value, action):
     versions_table.put_item(Item=item)
 
 
+def _claims_user_id(event):
+    authorizer = (event.get("requestContext") or {}).get("authorizer") or {}
+    jwt_claims = (authorizer.get("jwt") or {}).get("claims") or {}
+    legacy_claims = authorizer.get("claims") or {}
+
+    for source in (jwt_claims, legacy_claims):
+        if not source:
+            continue
+        for key in ("sub", "username", "cognito:username"):
+            if source.get(key):
+                return source[key]
+    return None
+
+
 def _extract_user_id(event):
     # 1) /preferences/{userId}/{preferenceKey}
     path_params = event.get("pathParameters") or {}
-    if "userId" in path_params and path_params["userId"]:
+    if path_params.get("userId"):
         return path_params["userId"]
 
     # 2) /me/preferences/{preferenceKey} з Cognito JWT
-    try:
-        claims = (
-            event.get("requestContext", {})
-            .get("authorizer", {})
-            .get("jwt", {})
-            .get("claims", {})
-        )
-        user_id = claims.get("sub") or claims.get("username")
-        if user_id:
-            return user_id
-    except Exception:
-        pass
-
-    return None
+    return _claims_user_id(event)
 
 
 def _extract_preference_key(event):

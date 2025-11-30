@@ -1,5 +1,6 @@
 from aws_cdk import (
     Stack,
+    aws_cognito as cognito,
     aws_dynamodb as dynamodb,
     aws_lambda as _lambda,
     aws_apigateway as apigw,
@@ -110,6 +111,26 @@ class InfraStack(Stack):
 
 
 
+        # -------- Cognito (User Pool for /me authorizer) --------
+
+        user_pool = cognito.UserPool(
+            self,
+            "PreferencesUserPool",
+            self_sign_up_enabled=False,
+            sign_in_aliases=cognito.SignInAliases(email=True, username=True),
+        )
+
+        user_pool_client = user_pool.add_client(
+            "PreferencesUserPoolClient",
+            auth_flows=cognito.AuthFlow(
+                admin_user_password=True,
+                user_password=True,
+                user_srp=True,
+            ),
+        )
+        self.user_pool = user_pool
+        self.user_pool_client = user_pool_client
+
         # -------- Lambda: GET /users/{userId} --------
 
         get_user_lambda = _lambda.Function(
@@ -180,6 +201,14 @@ class InfraStack(Stack):
             rest_api_name="UserPreferencesService",
         )
 
+        me_authorizer = apigw.CognitoUserPoolsAuthorizer(
+            self,
+            "MeAuthorizer",
+            cognito_user_pools=[user_pool],
+            authorizer_name="UserPreferencesMeAuthorizer",
+        )
+        me_authorizer._attach_to_api(api)
+
         # /users
         users_resource = api.root.add_resource("users")
 
@@ -217,7 +246,13 @@ class InfraStack(Stack):
         )
 
         # /me/preferences (JWT-protected path, Lambda expects Cognito claims)
-        me_resource = api.root.add_resource("me")
+        me_resource = api.root.add_resource(
+            "me",
+            default_method_options=apigw.MethodOptions(
+                authorization_type=apigw.AuthorizationType.COGNITO,
+                authorizer=me_authorizer,
+            ),
+        )
         me_preferences = me_resource.add_resource("preferences")
         me_preferences.add_method(
             "GET",

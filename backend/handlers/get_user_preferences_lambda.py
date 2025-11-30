@@ -7,33 +7,30 @@ dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["PREFERENCES_TABLE"])
 
 
+def _claims_user_id(event):
+    authorizer = (event.get("requestContext") or {}).get("authorizer") or {}
+    jwt_claims = (authorizer.get("jwt") or {}).get("claims") or {}
+    legacy_claims = authorizer.get("claims") or {}
+
+    for source in (jwt_claims, legacy_claims):
+        if not source:
+            continue
+        for key in ("sub", "username", "cognito:username"):
+            if source.get(key):
+                return source[key]
+    return None
+
+
 def _extract_user_id(event):
     """
-    Повертає userId з:
-    1) pathParameters["userId"]  -> для /preferences/{userId}
-    2) JWT claims.sub            -> для /me/preferences
+    Returns userId from either explicit path params (/preferences/{userId}) or Cognito claims (/me/*)
     """
 
-    # Варіант 1: /preferences/{userId}
     path_params = event.get("pathParameters") or {}
-    if "userId" in path_params and path_params["userId"]:
+    if path_params.get("userId"):
         return path_params["userId"]
 
-    # Варіант 2: /me/preferences з Cognito JWT
-    try:
-        claims = (
-            event.get("requestContext", {})
-            .get("authorizer", {})
-            .get("jwt", {})
-            .get("claims", {})
-        )
-        user_id = claims.get("sub") or claims.get("username")
-        if user_id:
-            return user_id
-    except Exception:
-        pass
-
-    return None
+    return _claims_user_id(event)
 
 
 def handler(event, context):

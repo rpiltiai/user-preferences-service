@@ -42,6 +42,20 @@ def _put_version_entry(user_id, pref_key, old_value, new_value, action):
     versions_table.put_item(Item=item)
 
 
+def _claims_user_id(event):
+    authorizer = (event.get("requestContext") or {}).get("authorizer") or {}
+    jwt_claims = (authorizer.get("jwt") or {}).get("claims") or {}
+    legacy_claims = authorizer.get("claims") or {}
+
+    for source in (jwt_claims, legacy_claims):
+        if not source:
+            continue
+        for key in ("sub", "username", "cognito:username"):
+            if source.get(key):
+                return source[key]
+    return None
+
+
 def handler(event, context):
     """
     SET /preferences/{userId}
@@ -81,18 +95,9 @@ def handler(event, context):
         if "userId" in path_params:
             user_id = path_params["userId"]
 
-        # Variant 2: HTTP API / JWT (/me/preferences)
+        # Variant 2: Cognito authorizer (/me/preferences)
         if not user_id:
-            try:
-                claims = (
-                    event.get("requestContext", {})
-                    .get("authorizer", {})
-                    .get("jwt", {})
-                    .get("claims", {})
-                )
-                user_id = claims.get("sub")
-            except Exception:
-                pass
+            user_id = _claims_user_id(event)
 
         if not user_id:
             return {
