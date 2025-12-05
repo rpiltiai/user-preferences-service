@@ -211,8 +211,9 @@ Parent can write to both:
 Current implementation:
 
 - Cognito-protected `/children/*` routes verify that the caller is Adult/Admin and that `childId` is linked in `ChildLinks`.
-- Adults can GET/PUT child preferences (with the same default resolver applied on read).
-- Remaining work: enforce per-preference locks (childOverride = locked) and age-restriction logic during PUT/REVERT, plus granular role scopes for Admins.
+- Adults can GET/PUT/DELETE child preferences (with the same default resolver applied on read).
+- All PUT/DELETE/REVERT mutations call the shared resolver to enforce `childOverride` locks and min/max age rules; blocked attempts are logged for CloudWatch metrics.
+- Remaining work: richer role scopes for Admins vs Ops and propagating restrictions into future GraphQL/import flows.
 
 5. REST API Surface
 
@@ -229,16 +230,17 @@ Current implementation:
 - GET /children (Cognito Adult/Admin, lists linked child profiles)
 - GET /children/{childId}/preferences (Adult/Admin, child must be linked; returns resolved prefs)
 - PUT /children/{childId}/preferences (Adult/Admin, writes overrides for the child)
+- DELETE /children/{childId}/preferences/{preferenceKey} (Adult/Admin, enforces managed locks/age)
 - GET /preference-versions (requires query param `userId`)
 - GET /preference-versions/{userId}
 - GET /preference-versions/{userId}/{preferenceKey}
 - POST /preferences/revert
+- GET /default-preferences (read-only view of resolver output, restricted to caller’s userId for now)
 
 5.2 Missing (must be implemented next)
 
-- GET /default-preferences (read-only endpoint using resolver)
-- Child preference DELETE / PATCH operations (parity with adults)
-- Role-based access policies (e.g., Admin vs Adult vs Child) for versioning and revert endpoints
+- Role-aware policies (Adult vs Admin vs Ops) for `/default-preferences`, versioning, and future Ops tooling
+- Dedicated `/default-preferences` admin-mode lookup (once role mapping lands)
 - Public/global `GET /preference-versions` filtering (if needed for analytics)
 
 6. Target GraphQL API (Appendix B)
