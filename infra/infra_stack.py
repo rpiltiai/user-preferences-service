@@ -161,6 +161,21 @@ class InfraStack(Stack):
             },
         )
 
+        # -------- Lambda: GET /default-preferences --------
+
+        default_preferences_lambda = _lambda.Function(
+            self,
+            "DefaultPreferencesFunction",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="handlers.default_preferences_lambda.handler",
+            code=_lambda.Code.from_asset("../backend"),
+            environment={
+                "USERS_TABLE": self.users_table.table_name,
+                "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
+                "AGE_THRESHOLDS_TABLE": self.age_thresholds_table.table_name,
+            },
+        )
+
         # -------- Lambda: PUT /preferences/{userId}, /me/preferences --------
 
         set_user_preferences_lambda = _lambda.Function(
@@ -174,6 +189,8 @@ class InfraStack(Stack):
                 "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
                 "CHILD_LINKS_TABLE": self.child_links_table.table_name,
                 "USERS_TABLE": self.users_table.table_name,
+                "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
+                "AGE_THRESHOLDS_TABLE": self.age_thresholds_table.table_name,
             },
         )
 
@@ -188,6 +205,10 @@ class InfraStack(Stack):
             environment={
                 "PREFERENCES_TABLE": self.preferences_table.table_name,
                 "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
+                "CHILD_LINKS_TABLE": self.child_links_table.table_name,
+                "USERS_TABLE": self.users_table.table_name,
+                "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
+                "AGE_THRESHOLDS_TABLE": self.age_thresholds_table.table_name,
             },
         )
 
@@ -228,6 +249,9 @@ class InfraStack(Stack):
             environment={
                 "PREFERENCES_TABLE": self.preferences_table.table_name,
                 "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
+                "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
+                "USERS_TABLE": self.users_table.table_name,
+                "AGE_THRESHOLDS_TABLE": self.age_thresholds_table.table_name,
             },
         )
 
@@ -235,13 +259,25 @@ class InfraStack(Stack):
         self.users_table.grant_read_data(get_user_lambda)
         self.users_table.grant_read_data(get_user_preferences_lambda)
         self.users_table.grant_read_data(set_user_preferences_lambda)
+        self.users_table.grant_read_data(delete_user_preference_lambda)
+        self.users_table.grant_read_data(revert_preference_lambda)
+        self.users_table.grant_read_data(default_preferences_lambda)
         self.preferences_table.grant_read_data(get_user_preferences_lambda)
         self.preferences_table.grant_read_write_data(set_user_preferences_lambda)
         self.preferences_table.grant_read_write_data(delete_user_preference_lambda)
         self.managed_prefs_table.grant_read_data(get_user_preferences_lambda)
+        self.managed_prefs_table.grant_read_data(default_preferences_lambda)
+        self.managed_prefs_table.grant_read_data(set_user_preferences_lambda)
+        self.managed_prefs_table.grant_read_data(delete_user_preference_lambda)
+        self.managed_prefs_table.grant_read_data(revert_preference_lambda)
         self.age_thresholds_table.grant_read_data(get_user_preferences_lambda)
+        self.age_thresholds_table.grant_read_data(default_preferences_lambda)
+        self.age_thresholds_table.grant_read_data(set_user_preferences_lambda)
+        self.age_thresholds_table.grant_read_data(delete_user_preference_lambda)
+        self.age_thresholds_table.grant_read_data(revert_preference_lambda)
         self.child_links_table.grant_read_data(get_user_preferences_lambda)
         self.child_links_table.grant_read_data(set_user_preferences_lambda)
+        self.child_links_table.grant_read_data(delete_user_preference_lambda)
         self.child_links_table.grant_read_data(list_children_lambda)
         self.users_table.grant_read_data(list_children_lambda)
         self.preference_versions_table.grant_write_data(set_user_preferences_lambda)
@@ -356,6 +392,11 @@ class InfraStack(Stack):
             "PUT",
             apigw.LambdaIntegration(set_user_preferences_lambda),
         )
+        child_preference_key = child_preferences.add_resource("{preferenceKey}")
+        child_preference_key.add_method(
+            "DELETE",
+            apigw.LambdaIntegration(delete_user_preference_lambda),
+        )
 
         # /preference-versions
         preference_versions_root = api.root.add_resource("preference-versions")
@@ -374,5 +415,12 @@ class InfraStack(Stack):
         preference_versions_by_key.add_method(
             "GET",
             apigw.LambdaIntegration(list_preference_versions_lambda),
+        )
+
+        # /default-preferences
+        default_preferences = api.root.add_resource("default-preferences")
+        default_preferences.add_method(
+            "GET",
+            apigw.LambdaIntegration(default_preferences_lambda),
         )
 

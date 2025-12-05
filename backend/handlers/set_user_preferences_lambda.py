@@ -5,6 +5,12 @@ from datetime import datetime
 import boto3
 from boto3.dynamodb.conditions import Key
 
+from lib.preferences_resolver import (
+    build_user_context,
+    ensure_preference_value_allowed,
+    get_managed_preference,
+)
+
 dynamodb = boto3.resource("dynamodb")
 preferences_table = dynamodb.Table(os.environ["PREFERENCES_TABLE"])
 versions_table = dynamodb.Table(os.environ["PREFERENCE_VERSIONS_TABLE"])
@@ -42,6 +48,14 @@ def _put_version_entry(user_id, pref_key, old_value, new_value, action):
         f"old={old_value} new={new_value}"
     )
     versions_table.put_item(Item=item)
+
+
+def _log_block(user_id, pref_key, actor_id, reason):
+    print(
+        "[PreferenceBlocked] "
+        f"userId={user_id} actorId={actor_id or 'unknown'} "
+        f"preferenceKey={pref_key} reason={reason}"
+    )
 
 
 def _claims_user_id(event):
@@ -82,12 +96,10 @@ def _ensure_actor_can_manage_child(actor_id, child_id):
     return actor
 
 
-def _resolve_target_user(event):
+def _resolve_target_user(event, caller_user_id):
     path_params = event.get("pathParameters") or {}
     child_id = path_params.get("childId")
     path_user_id = path_params.get("userId")
-    caller_user_id = _claims_user_id(event)
-
     if child_id:
         if not caller_user_id:
             raise PermissionError("Authentication (Cognito) is required for child access")
@@ -133,10 +145,12 @@ def handler(event, context):
     """
     print("Incoming event:", json.dumps(event))
 
+    caller_user_id = _claims_user_id(event)
+
     try:
         # 1. Determine target user (self, explicit userId, or child)
         try:
-            user_id = _resolve_target_user(event)
+            user_id = _resolve_target_user(event, caller_user_id)
         except PermissionError as auth_err:
             return {
                 "statusCode": 403,
@@ -243,6 +257,18 @@ def handler(event, context):
             existing_item = preferences_table.get_item(
                 Key={"userId": user_id, "preferenceKey": pref_key}
             ).get("Item")
+
+            schema = get_managed_preference(pref_key)
+            user_ctx = build_user_context(user_id)
+            try:
+                ensure_preference_value_allowed(schema, user_ctx, value)
+            except PermissionError as rule_err:
+                _log_block(user_id, pref_key, caller_user_id, str(rule_err))
+                return {
+                    "statusCode": 403,
+                    "headers": {"Content-Type": "application/json"},
+                    "body": json.dumps({"error": str(rule_err)}),
+                }
 
             stored_value = str(value) if value is not None else ""
             timestamp = _now_iso()
