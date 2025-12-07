@@ -141,6 +141,7 @@ class InfraStack(Stack):
             code=_lambda.Code.from_asset("../backend"),
             environment={
                 "USERS_TABLE": self.users_table.table_name,
+                "AGE_THRESHOLDS_TABLE": self.age_thresholds_table.table_name,
             },
         )
 
@@ -223,6 +224,7 @@ class InfraStack(Stack):
             environment={
                 "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
                 "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
+                "AGE_THRESHOLDS_TABLE": self.age_thresholds_table.table_name,
             },
         )
 
@@ -239,6 +241,7 @@ class InfraStack(Stack):
                 "CHILD_LINKS_TABLE": self.child_links_table.table_name,
                 "USERS_TABLE": self.users_table.table_name,
                 "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
+                "AGE_THRESHOLDS_TABLE": self.age_thresholds_table.table_name,
             },
         )
 
