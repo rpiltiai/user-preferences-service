@@ -8,7 +8,8 @@ from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource("dynamodb")
 users_table = dynamodb.Table(os.environ["USERS_TABLE"])
-managed_prefs_table = dynamodb.Table(os.environ["MANAGED_PREFERENCES_TABLE"])
+managed_table_env = os.environ.get("MANAGED_PREFERENCES_TABLE") or os.environ["MANAGED_SCHEMA_TABLE"]
+managed_prefs_table = dynamodb.Table(managed_table_env)
 age_thresholds_table = dynamodb.Table(os.environ["AGE_THRESHOLDS_TABLE"])
 
 

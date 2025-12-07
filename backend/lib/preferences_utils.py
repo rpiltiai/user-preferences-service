@@ -7,6 +7,22 @@ from boto3.dynamodb.conditions import Key
 
 import boto3
 _table_cache: Dict[str, Any] = {}
+dynamodb = boto3.resource("dynamodb")
+
+
+def _table(env_var_name: str):
+    if env_var_name in _table_cache:
+        return _table_cache[env_var_name]
+    try:
+        table_name = os.environ[env_var_name]
+    except KeyError:
+        if env_var_name == "MANAGED_PREFERENCES_TABLE" and "MANAGED_SCHEMA_TABLE" in os.environ:
+            table_name = os.environ["MANAGED_SCHEMA_TABLE"]
+        else:
+            raise
+    table = dynamodb.Table(table_name)
+    _table_cache[env_var_name] = table
+    return table
 
 
 def claims_user_id(event: Dict[str, Any]) -> Optional[str]:
