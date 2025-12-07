@@ -222,6 +222,7 @@ class InfraStack(Stack):
             code=_lambda.Code.from_asset("../backend"),
             environment={
                 "PREFERENCE_VERSIONS_TABLE": self.preference_versions_table.table_name,
+                "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
             },
         )
 
@@ -237,6 +238,7 @@ class InfraStack(Stack):
             environment={
                 "CHILD_LINKS_TABLE": self.child_links_table.table_name,
                 "USERS_TABLE": self.users_table.table_name,
+                "MANAGED_PREFERENCES_TABLE": self.managed_prefs_table.table_name,
             },
         )
 
