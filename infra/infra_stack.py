@@ -310,24 +310,26 @@ class InfraStack(Stack):
             ),
         )
 
-        apigw.GatewayResponse(
-            self,
+        allow_methods_header = "GET,POST,PUT,DELETE,OPTIONS"
+        allow_headers_header = ",".join(cors_allowed_headers)
+        allow_origin_header = cors_allowed_origin
+
+        api.add_gateway_response(
             "Default4XXWithCors",
-            rest_api=api,
             type=apigw.ResponseType.DEFAULT_4_XX,
             response_headers={
-                "Access-Control-Allow-Origin": f"'{cors_allowed_origin}'",
-                "Access-Control-Allow-Headers": "'*'",
+                "Access-Control-Allow-Origin": allow_origin_header,
+                "Access-Control-Allow-Headers": allow_headers_header,
+                "Access-Control-Allow-Methods": allow_methods_header,
             },
         )
-        apigw.GatewayResponse(
-            self,
+        api.add_gateway_response(
             "Default5XXWithCors",
-            rest_api=api,
             type=apigw.ResponseType.DEFAULT_5_XX,
             response_headers={
-                "Access-Control-Allow-Origin": f"'{cors_allowed_origin}'",
-                "Access-Control-Allow-Headers": "'*'",
+                "Access-Control-Allow-Origin": allow_origin_header,
+                "Access-Control-Allow-Headers": allow_headers_header,
+                "Access-Control-Allow-Methods": allow_methods_header,
             },
         )
 
