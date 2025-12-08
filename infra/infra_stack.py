@@ -392,6 +392,17 @@ class InfraStack(Stack):
                 authorizer=me_authorizer,
             ),
         )
+        me_resource.add_cors_preflight(
+            allow_origins=["http://localhost:5173"],
+            allow_methods=["GET", "PUT", "DELETE", "OPTIONS"],
+            allow_headers=[
+                "Content-Type",
+                "Authorization",
+                "X-Amz-Date",
+                "X-Api-Key",
+                "X-Amz-Security-Token",
+            ],
+        )
         me_preferences = me_resource.add_resource("preferences")
         me_preferences.add_method(
             "GET",
