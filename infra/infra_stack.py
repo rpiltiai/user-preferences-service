@@ -289,10 +289,46 @@ class InfraStack(Stack):
 
         # -------- API Gateway --------
 
+        cors_allowed_headers = [
+            "Content-Type",
+            "Authorization",
+            "X-Amz-Date",
+            "X-Api-Key",
+            "X-Amz-Security-Token",
+        ]
+        cors_allowed_origin = "http://localhost:5173"
+
         api = apigw.RestApi(
             self,
             "UserPreferencesApi",
             rest_api_name="UserPreferencesService",
+            default_cors_preflight_options=apigw.CorsOptions(
+                allow_origins=[cors_allowed_origin],
+                allow_methods=apigw.Cors.ALL_METHODS,
+                allow_headers=cors_allowed_headers,
+                allow_credentials=True,
+            ),
+        )
+
+        apigw.GatewayResponse(
+            self,
+            "Default4XXWithCors",
+            rest_api=api,
+            type=apigw.ResponseType.DEFAULT_4_XX,
+            response_headers={
+                "Access-Control-Allow-Origin": f"'{cors_allowed_origin}'",
+                "Access-Control-Allow-Headers": "'*'",
+            },
+        )
+        apigw.GatewayResponse(
+            self,
+            "Default5XXWithCors",
+            rest_api=api,
+            type=apigw.ResponseType.DEFAULT_5_XX,
+            response_headers={
+                "Access-Control-Allow-Origin": f"'{cors_allowed_origin}'",
+                "Access-Control-Allow-Headers": "'*'",
+            },
         )
 
         me_authorizer = apigw.CognitoUserPoolsAuthorizer(
