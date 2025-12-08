@@ -10,7 +10,9 @@ dynamodb = boto3.resource("dynamodb")
 users_table = dynamodb.Table(os.environ["USERS_TABLE"])
 managed_table_env = os.environ.get("MANAGED_PREFERENCES_TABLE") or os.environ["MANAGED_SCHEMA_TABLE"]
 managed_prefs_table = dynamodb.Table(managed_table_env)
-age_thresholds_table = dynamodb.Table(os.environ["AGE_THRESHOLDS_TABLE"])
+age_thresholds_table = dynamodb.Table(
+    os.environ.get("AGE_THRESHOLDS_TABLE", "AgeThresholds")
+)
 
 
 def _scan_all(table):
